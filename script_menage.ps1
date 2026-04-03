@@ -31,7 +31,7 @@ function Write-Log
     $horodatage = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
     # Si le fichier de logs et ses dossiers parents ne sont pas encore présents, les ajouter
-    if (-not (Test-Path $fichier_logs)) {New-Item -ItemType File -Path $fichier_logs -Force}
+    if (-not(Test-Path $fichier_logs)) {New-Item -ItemType File -Path $fichier_logs -Force}
 
     # Mettre le contenu des actions du script dans le fichier de journaux avec l'horodatage et la sévérité 
     Add-Content -Path $fichier_logs -Value "$($horodatage)   -   $($Sévérité)   -   $($Contenu)"
@@ -142,7 +142,7 @@ Entrez le chiffre correspondant à l'option choisie :
 3. Lancer les mises à jour Windows
 "
 # Lire le chiffre entré par le lanceur du script
-$choix_lancement = Read-Host "Entrez ici votre choix (1 à 3) "
+$choix_lancement = Read-Host "Entrez ici votre choix (1 à 3) " 
 
 # Exécuter les fonctions selon le chiffre entré par le lanceur du script
 try 
@@ -152,7 +152,7 @@ try
         "1" {Remove-Users ; Get-Update ; Remove-Network}
         "2" {Get-Update ; Remove-Network}
         "3" {Get-Update}
-        default {Write-Host "Veuillez entrer un chiffre entre 1 et 3" -ForegroundColor Red}
+        default {Write-Host "Veuillez entrer un chiffre entre 1 et 3" -ForegroundColor Red}   
     }
 }
 catch 
