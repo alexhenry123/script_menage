@@ -1,6 +1,4 @@
-﻿# -------------------------------------- Assignation de variables --------------------------------------
-
-
+# -------------------------------------- Assignation de variables --------------------------------------
 
 # Choix d'encodage
 $PSDefaultParameterValues["*:Encoding"] = "UTF8"
@@ -13,9 +11,7 @@ $ErrorActionPreference = "Stop"
 $WhatIfPreference = $false
 
 
-
 # -------------------------------------------- Fonctions --------------------------------------------
-
 
 
 # Fonction pour journaliser les actions du script dans le fichier log
@@ -31,11 +27,14 @@ function Write-Log
     )
 
     # Assignation des variables
-    $chemin_logs = "C:\Scripts\Logs\journaux.log"
+    $fichier_logs = "C:\Scripts\Logs\journaux.log"
     $horodatage = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
+    # Si le fichier de logs et ses dossiers parents ne sont pas encore présents, les ajouter
+    if (-not (Test-Path $fichier_logs)) {New-Item -ItemType File -Path $fichier_logs -Force}
+
     # Mettre le contenu des actions du script dans le fichier de journaux avec l'horodatage et la sévérité 
-    Set-Content -Path $chemin_logs -Value "$($horodatage)   -   $($Sévérité)   -   $($Contenu)"
+    Add-Content -Path $fichier_logs -Value "$($horodatage)   -   $($Sévérité)   -   $($Contenu)"
 }
 
 # Fonction 1 : Suppression des utilisateurs désuets
@@ -54,14 +53,10 @@ function Remove-Users
     WHERE SID != '$($SID_loaner)' 
     AND SID != '$($SID_service_local)' 
     AND SID != '$($SID_service_reseau)' 
-    AND SID != '$($SID_profil_systeme)'" -WhatIf
+    AND SID != '$($SID_profil_systeme)'" 
 
     Write-Host "Les utilisateurs ont été supprimés avec succès" -ForegroundColor Green
     Write-Log -Sévérité "INFO" -Contenu "Les utilisateurs ont été supprimés avec succès"
-
-    # Journalisation : utilisation du paramètre WhatIf pour journaliser les utilisateurs supprimés (Remove-CimInstance ne donne rien en output)
-    $log_utilisateurs = Remove-CimInstance -Query "SELECT * FROM Win32_UserProfile WHERE SID != '$($SID_loaner)' AND SID != '$($SID_service_local)' AND SID != '$($SID_service_reseau)' AND SID != '$($SID_profil_systeme)'" -WhatIf 4>&1
-    $log_utilisateurs | Write-Log -Sévérité "INFO" -Contenu $_
 }
 
 # Fonction 2 : Automatisation des mises à jour Windows et redémarrage automatique 
@@ -70,37 +65,66 @@ function Get-Update
     # Prérequis : installer le module PSWindowsUpdate pour mettre à jour le système (s'il n'est pas déjà installé)
     if (-not(Get-Module -ListAvailable -Name PSWindowsUpdate)) 
     {
-        Write-Host "Installation du module PSWindowsUpdate afin permettre les mises à jour sur PowerShell..." -ForegroundColor Cyan
+        Write-Host "Installation du module PSWindowsUpdate afin de permettre les mises à jour sur PowerShell" -ForegroundColor Cyan
         Install-Module -Name PSWindowsUpdate -Force -AllowClobber -Scope CurrentUser 
 
-        Write-Log -Sévérité "INFO" -Contenu $_
         Write-Host "Installation du module terminée" -ForegroundColor Green
+        Write-Log -Sévérité "INFO" -Contenu "Installation du module terminée"
     }
-    # Avant de lancer les mises à jour, vérifier que le poste est connecté à Internet 
-    #Test-NetConnection 
 
-    # Si le test échoue, demander au lanceur du script s'il désire toujours lancer les mises à jour Windows. Si oui, continuer l'exécution et sinon, sortir du script
-
+    # Test de ping pour voir s'il y a un accès Internet. S'il échoue, demander au lanceur du script s'il désire toujours lancer les mises à jour Windows
+    Write-Host "Test de ping pour vérifier l'accès à Internet" -ForegroundColor Cyan
+    Write-Log -Sévérité "INFO" -Contenu "Test de ping pour vérifier l'accès à Internet"
+    if (-not(Test-Connection google.com -Quiet))
+    {
+        $poursuivre_ou_non = (Read-Host "L'ordinateur n'est pas connecté à Internet. Désirez-vous tout de même poursuivre avec l'installation (Oui ou Non) ?").ToLower()
+        # Si l'option "Non" est choisie, sortir du script 
+        if ($poursuivre_ou_non -like "n*") 
+        {            
+            Write-Host "Le script a été arrêté par l'utilisateur" 
+            Write-Log -Sévérité "INFO" -Contenu "Le script a été arrêté par l'utilisateur"
+            exit
+        }
+        # Si l'option "Oui" est choisie, continuer le script
+        elseif ($poursuivre_ou_non -like "o*") 
+        {
+            Write-Host "L'option 'oui' a été sélectionnée, le script se poursuit" 
+            Write-Log -Sévérité "INFO" -Contenu "L'option 'oui' a été sélectionnée, le script continue"
+        }
+        # Si une réponse invalide est fournie, sortir du script
+        else 
+        {
+            Write-Host "Le script n'a pas reconnu l'option choisie pour poursuivre les mises à jour, il s'est donc arrêté" 
+            Write-Log -Sévérité "ERREUR" -Contenu "Le script n'a pas reconnu l'option choisie pour poursuivre les mises à jour, il s'est donc arrêté"
+            exit
+        }
+    }
+    
+    # Vérifier s'il y a des mises à jour Windows à effectuer. S'il n'y en a pas, sortir de la fonction
+    Write-Host "Vérification des mises à jour Windows à effectuer" -ForegroundColor Cyan
+    Write-Log -Sévérité "INFO" -Contenu "Vérification des mises à jour Windows à effectuer"
+    $mises_a_jour_disponibles = Get-WindowsUpdate
+    if ($null -eq $mises_a_jour_disponibles) 
+    {
+        Write-Log -Sévérité "INFO" -Contenu "Aucune mise à jour Windows disponible pour l'instant. Sortie du script"
+        Write-Host "Aucune mise à jour Windows disponible pour l'instant" -ForegroundColor Green
+        return
+    }
 
     # Automatiser le lancement des mises à jour Windows et le redémarrage du système pour terminer les mises à jour restantes
-    Write-Host "Lancement des mises à jour Windows Update..." -ForegroundColor Cyan
+    Write-Host "Lancement des mises à jour Windows Update" -ForegroundColor Cyan
     Get-WindowsUpdate -Install -AcceptAll -AutoReboot -MicrosoftUpdate -RecurseCycle 10 
 
-    Write-Log -Sévérité "INFO" -Contenu "Les mises à jour ont été installées avec succès" $_
     Write-Host "Les mises à jour ont été installées avec succès" -ForegroundColor Green
+    Write-Log -Sévérité "INFO" -Contenu "Les mises à jour ont été installées avec succès"
 }
 
-# Fonction 3 : Oublier tous les réseaux Wi-Fi connus sur l'ordinateur
+# Fonction 3 : Oublier tous les réseaux Wi-Fi connus 
 function Remove-Network
 {
-    $liste_wifi = (netsh.exe wlan show profiles)
-    foreach ($wifi in $liste_wifi) 
-    {
-        netsh.exe wlan delete profile $wifi
-        #Write-Host "Réseau Wi-Fi $($wifi) oublié" -ForegroundColor Green
-        Write-Log -Sévérité "INFO" -Contenu $_
-    }
+    netsh.exe wlan delete profile name=* i=*
     Write-Host "Les réseaux Wi-Fi ont été oubliés avec succès" -ForegroundColor Green
+    Write-Log -Sévérité "INFO" -Contenu "Les réseaux Wi-Fi ont été oubliés avec succès"
 }
 
 
@@ -133,6 +157,6 @@ try
 }
 catch 
 {
-    Write-Host "Une erreur est survenue : " $_ -ForegroundColor Red
+    Write-Host "Une erreur est survenue : $_" -ForegroundColor Red
     Write-Log -Sévérité "ERREUR" -Contenu $_
 }
